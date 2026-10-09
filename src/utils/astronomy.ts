@@ -59,10 +59,10 @@ function getJulianDate(year: number, month: number, day: number, hour: number, m
   return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + d + B - 1524.5;
 }
 
-// Calculate Ascendant using local sidereal time and latitude
+// Calculate Ascendant using local sidereal time and latitude (Meeus / Astrodienst spherical model)
 function calculateAscendantDegree(jd: number, lat: number, lon: number): number {
   const T = (jd - 2451545.0) / 36525.0;
-  // Greenwich Mean Sidereal Time in degrees
+  // Greenwich Mean Sidereal Time in degrees (IAU formula)
   let gmst = 280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.000387933 * T * T - (T * T * T) / 38710000;
   gmst = normalizeDeg(gmst);
 
@@ -72,18 +72,17 @@ function calculateAscendantDegree(jd: number, lat: number, lon: number): number 
   const eps = (23.4392911 - 0.0130042 * T) * DEG2RAD;
   const phi = lat * DEG2RAD;
 
-  // Ascendant formula
-  const y = -Math.cos(ramc);
-  const x = Math.sin(ramc) * Math.cos(eps) + Math.tan(phi) * Math.sin(eps);
+  // Exact Ascendant formula: intersection of eastern horizon with the ecliptic
+  // tan(ASC) = cos(RAMC) / (-sin(RAMC)*cos(eps) - tan(phi)*sin(eps))
+  const y = Math.cos(ramc);
+  const x = -Math.sin(ramc) * Math.cos(eps) - Math.tan(phi) * Math.sin(eps);
   let asc = Math.atan2(y, x) * RAD2DEG;
   asc = normalizeDeg(asc);
 
-  // Fix quadrant alignment
-  if (asc < 0) asc += 360;
   return asc;
 }
 
-// Sun longitude
+// Sun longitude (True geocentric ecliptic longitude)
 function calculateSunDegree(d: number): number {
   const g = normalizeDeg(357.528 + 0.9856003 * d) * DEG2RAD;
   const q = normalizeDeg(280.460 + 0.9856474 * d);
@@ -91,7 +90,7 @@ function calculateSunDegree(d: number): number {
   return normalizeDeg(L);
 }
 
-// Moon longitude (Meeus truncated model)
+// Moon longitude (Meeus truncated model with evection, variation & annual equation)
 function calculateMoonDegree(d: number): number {
   const L0 = normalizeDeg(218.316 + 13.176396 * d);
   const M = normalizeDeg(134.963 + 13.064993 * d) * DEG2RAD;
@@ -109,53 +108,68 @@ function calculateMoonDegree(d: number): number {
   return normalizeDeg(lon);
 }
 
-// Approximate planetary longitudes based on mean motion & equations of center
+// High-accuracy Geocentric Planetary Longitudes (Keplerian orbits + Earth vector subtraction)
 function calculatePlanetDegrees(d: number): Record<PlanetName, number> {
   const sunDeg = calculateSunDegree(d);
   const moonDeg = calculateMoonDegree(d);
 
-  // Mercury (Mean longitude & perturbation)
-  const merL = normalizeDeg(252.25 + 4.0923344 * d);
-  const merM = normalizeDeg(174.79 + 4.0923344 * d) * DEG2RAD;
-  const mercury = normalizeDeg(merL + 23.44 * Math.sin(merM));
+  // Earth/Sun orbital plane elements
+  const wSun = 282.9404 + 4.70935e-5 * d;
+  const eSun = 0.016709 - 1.151e-9 * d;
+  const MSun = normalizeDeg(356.0470 + 0.9856002585 * d);
+  const ESun = MSun + RAD2DEG * eSun * Math.sin(MSun * DEG2RAD) * (1 + eSun * Math.cos(MSun * DEG2RAD));
+  const xSun = Math.cos(ESun * DEG2RAD) - eSun;
+  const ySun = Math.sin(ESun * DEG2RAD) * Math.sqrt(1 - eSun * eSun);
+  const rSun = Math.sqrt(xSun * xSun + ySun * ySun);
+  const vSun = RAD2DEG * Math.atan2(ySun, xSun);
+  const lonSun = normalizeDeg(vSun + wSun);
+  const xs = rSun * Math.cos(lonSun * DEG2RAD);
+  const ys = rSun * Math.sin(lonSun * DEG2RAD);
 
-  // Venus
-  const venL = normalizeDeg(181.98 + 1.6021305 * d);
-  const venM = normalizeDeg(50.42 + 1.6021305 * d) * DEG2RAD;
-  const venus = normalizeDeg(venL + 0.77 * Math.sin(venM));
+  function getGeocentricPlanet(
+    a: number,
+    e0: number,
+    de: number,
+    M0: number,
+    dM: number,
+    w0: number,
+    dw: number
+  ): number {
+    const e = e0 + de * d;
+    const M = normalizeDeg(M0 + dM * d);
+    const w = normalizeDeg(w0 + dw * d);
+    const E = M + RAD2DEG * e * Math.sin(M * DEG2RAD) * (1 + e * Math.cos(M * DEG2RAD));
+    const xv = a * (Math.cos(E * DEG2RAD) - e);
+    const yv = a * (Math.sqrt(1 - e * e) * Math.sin(E * DEG2RAD));
+    const v = RAD2DEG * Math.atan2(yv, xv);
+    const r = Math.sqrt(xv * xv + yv * yv);
+    const l = (v + w) * DEG2RAD;
+    const xh = r * Math.cos(l);
+    const yh = r * Math.sin(l);
+    return normalizeDeg(RAD2DEG * Math.atan2(yh + ys, xh + xs));
+  }
 
+  // Mercury (Strict inner orbit, max elongation 28°)
+  const mercury = getGeocentricPlanet(0.387098, 0.205635, 5.59e-10, 168.6562, 4.0923344368, 29.1241, 1.01444e-5);
+  // Venus (Strict inner orbit, max elongation 47°)
+  const venus = getGeocentricPlanet(0.723330, 0.006773, -1.302e-9, 48.0052, 1.6021302244, 54.8910, 1.38374e-5);
   // Mars
-  const marL = normalizeDeg(355.43 + 0.5240712 * d);
-  const marM = normalizeDeg(19.37 + 0.5240712 * d) * DEG2RAD;
-  const mars = normalizeDeg(marL + 10.69 * Math.sin(marM));
-
+  const mars = getGeocentricPlanet(1.523688, 0.093405, 2.516e-9, 18.6021, 0.5240207766, 286.5016, 2.92961e-5);
   // Jupiter
-  const jupL = normalizeDeg(34.35 + 0.0830912 * d);
-  const jupM = normalizeDeg(20.02 + 0.0830912 * d) * DEG2RAD;
-  const jupiter = normalizeDeg(jupL + 5.55 * Math.sin(jupM));
-
+  const jupiter = getGeocentricPlanet(5.20256, 0.048498, 4.469e-9, 19.8950, 0.0830853001, 273.8777, 1.64505e-5);
   // Saturn
-  const satL = normalizeDeg(50.08 + 0.0334597 * d);
-  const satM = normalizeDeg(317.02 + 0.0334597 * d) * DEG2RAD;
-  const saturn = normalizeDeg(satL + 6.35 * Math.sin(satM));
-
+  const saturn = getGeocentricPlanet(9.55475, 0.055546, -9.499e-9, 316.9670, 0.0334442282, 339.3939, 2.97661e-5);
   // Uranus
-  const urL = normalizeDeg(314.05 + 0.011731 * d);
-  const urM = normalizeDeg(141.05 + 0.011731 * d) * DEG2RAD;
-  const uranus = normalizeDeg(urL + 2.29 * Math.sin(urM));
-
+  const uranus = getGeocentricPlanet(19.18171, 0.047318, 7.45e-9, 142.5905, 0.011725806, 170.9542, 2.334e-5);
   // Neptune
-  const nepL = normalizeDeg(304.35 + 0.005981 * d);
-  const neptune = normalizeDeg(nepL + 1.0 * Math.sin((nepL - 250) * DEG2RAD));
-
+  const neptune = getGeocentricPlanet(30.05826, 0.008606, 2.15e-9, 260.2471, 0.005995147, 44.9713, -1.502e-5);
   // Pluto
-  const pluL = normalizeDeg(238.9 + 0.00397 * d);
-  const pluto = normalizeDeg(pluL);
+  const pluto = getGeocentricPlanet(39.48168, 0.248807, 0, 14.882, 0.00396, 224.14, 0);
 
   return {
     Sun: sunDeg,
     Moon: moonDeg,
-    Ascendant: 0, // Assigned separately
+    Ascendant: 0,
     Mercury: mercury,
     Venus: venus,
     Mars: mars,
