@@ -5,6 +5,8 @@ export const POPULAR_CITIES: CityOption[] = [
   { name: 'Москва', country: 'Россия', lat: 55.7558, lon: 37.6173, tz: 3 },
   { name: 'Санкт-Петербург', country: 'Россия', lat: 59.9343, lon: 30.3351, tz: 3 },
   { name: 'Иваново', country: 'Россия', lat: 56.9972, lon: 40.9714, tz: 3 },
+  { name: 'Лотошино', country: 'Россия', lat: 56.2300, lon: 35.6367, tz: 3 },
+  { name: 'п. Лотошино (Московская обл.)', country: 'Россия', lat: 56.2300, lon: 35.6367, tz: 3 },
   { name: 'п. Алташино', country: 'Россия', lat: 56.9972, lon: 40.9714, tz: 3 },
   { name: 'п. Алташино (Ивановская обл.)', country: 'Россия', lat: 57.0125, lon: 41.0180, tz: 3 },
 

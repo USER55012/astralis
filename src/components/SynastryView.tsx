@@ -22,13 +22,13 @@ export const SynastryView: React.FC<SynastryViewProps> = ({ initialPerson1 }) =>
   const [p2Name, setP2Name] = useState('Она');
   const [p2Date, setP2Date] = useState('1999-09-21');
   const [p2Time, setP2Time] = useState('10:15');
-  const [p2City, setP2City] = useState('п. Алташино');
+  const [p2City, setP2City] = useState('Лотошино');
 
   const [isLoading, setIsLoading] = useState(false);
 
   const [synastryResult, setSynastryResult] = useState<SynastryResult | null>(() => {
     if (initialPerson1) {
-      const cityP2 = POPULAR_CITIES.find((c) => c.name === 'п. Алташино') || POPULAR_CITIES[0];
+      const cityP2 = POPULAR_CITIES.find((c) => c.name === 'Лотошино') || POPULAR_CITIES[0];
       const p2Chart = calculateNatalChart({
         name: 'Она',
         birthDate: '1999-09-21',
